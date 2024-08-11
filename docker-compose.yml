@@ -1,0 +1,136 @@
+version: '3.9'
+
+x-kafka: &kafka
+  build: &kaska-build
+    context: .
+    dockerfile: Dockerfile.kafka
+    args:
+      JMX_JAVAAGENT_VERSION: ${JMX_JAVAAGENT_VERSION}
+  environment: &kafka-env
+    HOME: /opt/bitnami/kafka
+    KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
+    KAFKA_ENABLE_KRAFT: "no"
+    KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+    ALLOW_PLAINTEXT_LISTENER: "yes"
+    KAFKA_OPTS: -javaagent:/opt/bitnami/kafka/libs/jmx_prometheus_javaagent-${JMX_JAVAAGENT_VERSION}.jar=${JMX_JAVAAGENT_PORT}:/etc/kafka/prometheus/kafka.yml
+  volumes:
+    - ./jmx-exporter/kafka.yml:/etc/kafka/prometheus/kafka.yml:ro
+  depends_on:
+    - zookeeper
+
+x-zookeeper: &zookeeper
+  image: docker.io/bitnami/zookeeper:${ZK_VERSION}
+  volumes:
+    - zookeeper:/bitnami
+  environment:
+    ALLOW_ANONYMOUS_LOGIN: "yes"
+
+x-prometheus: &prometheus
+  image: quay.io/prometheus/prometheus:${PROMETHEUS_VERSION}
+  volumes:
+    - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  ports:
+    - ${PROMETHEUS_PORT}:9090
+
+x-producer: &producer
+  build: &producer-build
+    context: ./Producer
+  environment: &producer-env
+    KAFKA_TOPIC: ${KAFKA_TOPIC}
+    KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+
+x-consumer: &consumer
+  environment: &consumer-env
+    KAFKA_TOPIC: "example"
+    KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+    KAFKA_CONSUMER_GROUP: "example-consumer-group"
+
+services:
+  # consumer-1:
+  #   <<: *consumer
+  #   container_name: consumer-1
+  #   environment:
+  #     <<: *consumer-env
+
+  producer-1:
+    <<: *producer
+    container_name: producer-1
+    environment:
+      <<: *producer-env
+      PRODUCER_ID: 1
+    depends_on:
+      - events-base
+
+  # client-api:
+  #   depends_on:
+  #     - consumer
+  #     - transactions-service
+
+  # transactions-service:
+  #   depends_on:
+  #     - transactions-base
+  #     - events-base
+  #     - users-base
+
+  events-base:
+    image: yandex/clickhouse-server
+    ports:
+      - 8123:8123
+    volumes:
+      - ./db:/var/lib/clickhouse
+
+  transactions-base:
+    image: postgres:14-alpine
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    entrypoint:
+      - POSTGRES_USER=${TRANSACTIONS_BASE_USERNAME}
+      - POSTGRES_PASSWORD=${TRANSACTIONS_BASE_PASSWORD}
+      - POSTGRES_DB=${TRANSACTIONS_BASE_NAME}
+
+  users-base:
+    image: mongo
+    ports:
+      - 27017:27017
+    volumes:
+      - dbdata6:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${USERS_BASE_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${USERS_BASE_ROOT_PASSWORD}
+
+  kafka-1:
+    <<: *kafka
+    container_name: kafka-1
+    environment:
+      <<: *kafka-env
+      KAFKA_BROKER_ID: 1
+
+  kafka-2:
+    <<: *kafka
+    container_name: kafka-2
+    environment:
+      <<: *kafka-env
+      KAFKA_BROKER_ID: 2
+
+  kafka-3:
+    <<: *kafka
+    container_name: kafka-3
+    environment:
+      <<: *kafka-env
+      KAFKA_BROKER_ID: 3
+
+  zookeeper:
+    <<: *zookeeper
+    container_name: zookeeper
+  
+  prometheus:
+    <<: *prometheus
+    container_name: prometheus
+    
+volumes:
+  zookeeper:
+    driver: local
+  dbdata6:
+  postgres:
