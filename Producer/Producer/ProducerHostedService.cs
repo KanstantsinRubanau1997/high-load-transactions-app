@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Producer.Services;
 
 namespace Producer
 {
@@ -8,14 +10,17 @@ namespace Producer
     {
         private readonly IConfiguration _config;
         private readonly ILogger _logger;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
 
 
         public ProducerHostedService(
             IConfiguration config,
-            ILogger<ProducerHostedService> logger)
+            ILogger<ProducerHostedService> logger,
+            IServiceScopeFactory serviceScopeFactory)
         {
             _config = config;
             _logger = logger;
+            _serviceScopeFactory = serviceScopeFactory;
         }
 
 
@@ -24,17 +29,15 @@ namespace Producer
             var producerId = _config.GetValue<int>(EnvKeys.PRODUCER_ID_KEY);
             _logger.LogInformation($"Producer {producerId} hosting started");
 
-            using PeriodicTimer timer = new(TimeSpan.FromSeconds(3));
-            try
+            using(var scope = _serviceScopeFactory.CreateScope())
             {
+                var transactionsSender = scope.ServiceProvider.GetRequiredService<TranscationSenderService>();
+
+                using PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
                 while (await timer.WaitForNextTickAsync(stoppingToken))
                 {
-                    _logger.LogInformation("Action");
+                    await transactionsSender.ProduceRandomTransaction();
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogInformation("Start action is stopped");
             }
         }
     }

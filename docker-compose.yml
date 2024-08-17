@@ -1,6 +1,7 @@
 version: '3.9'
 
 x-kafka: &kafka
+  restart: always
   build: &kaska-build
     context: .
     dockerfile: Dockerfile.kafka
@@ -45,6 +46,25 @@ x-consumer: &consumer
     KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
     KAFKA_CONSUMER_GROUP: "example-consumer-group"
 
+x-redpanda-console: &redpanda-console
+  image: docker.redpanda.com/vectorized/console:v${REDPANDA_CONSOLE_VERSION}
+  entrypoint: /bin/sh
+  command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+  environment: 
+    CONFIG_FILEPATH: /tmp/config.yml
+    CONSOLE_CONFIG_FILE: |
+      kafka:
+        brokers: ["kafka-1:9092", "kafka-2:9092", "kafka-3:9092"]
+        schemaRegistry:
+          enabled: false
+          urls: ["http://redpanda-0:8081"]
+  ports:
+    - ${REDPANDA_CONSOLE_PORT}:8080
+  depends_on:
+    - kafka-1
+    - kafka-2
+    - kafka-3
+
 services:
   # consumer-1:
   #   <<: *consumer
@@ -58,8 +78,20 @@ services:
     environment:
       <<: *producer-env
       PRODUCER_ID: 1
-    depends_on:
-      - events-base
+
+  producer-2:
+    <<: *producer
+    container_name: producer-2
+    environment:
+      <<: *producer-env
+      PRODUCER_ID: 2
+  
+  producer-3:
+    <<: *producer
+    container_name: producer-3
+    environment:
+      <<: *producer-env
+      PRODUCER_ID: 3
 
   # client-api:
   #   depends_on:
@@ -128,6 +160,10 @@ services:
   prometheus:
     <<: *prometheus
     container_name: prometheus
+
+  ui:
+    <<: *redpanda-console
+    container_name: ui
     
 volumes:
   zookeeper:
