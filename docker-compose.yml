@@ -41,6 +41,8 @@ x-producer: &producer
     KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
 
 x-consumer: &consumer
+  build: &consumer-build
+    context: ./Consumer
   environment: &consumer-env
     KAFKA_TOPIC: "example"
     KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
@@ -66,11 +68,26 @@ x-redpanda-console: &redpanda-console
     - kafka-3
 
 services:
-  # consumer-1:
-  #   <<: *consumer
-  #   container_name: consumer-1
-  #   environment:
-  #     <<: *consumer-env
+  consumer-1:
+    <<: *consumer
+    container_name: consumer-1
+    environment:
+      <<: *consumer-env
+      CONCUMER_ID: 1
+
+  consumer-2:
+    <<: *consumer
+    container_name: consumer-2
+    environment:
+      <<: *consumer-env
+      CONCUMER_ID: 2
+
+  consumer-3:
+    <<: *consumer
+    container_name: consumer-3
+    environment:
+      <<: *consumer-env
+      CONCUMER_ID: 3
 
   producer-1:
     <<: *producer
